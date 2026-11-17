@@ -4,6 +4,10 @@ use macroquad::rand::gen_range;
 const ENEMY_SPEED: f32 = 180.0;
 const PLAYER_RADIUS: f32 = 4.0;
 const PLAYER_COLOR: Color = BLUE;
+const PLAYER_MAX_HEALTH: f32 = 100.0;
+const HEALTH_DROP_SPEED: f32 = 40.0;
+const PLAYER_MAX_MANA: f32 = 100.0;
+const MANA_DROP_SPEED: f32 = 40.0;
 
 struct Enemy {
     pos: Vec2,
@@ -54,6 +58,8 @@ struct Player {
     pos: Vec2,
     radius: f32,
     color: Color,
+    health: f32,
+    mana: f32,
 }
 
 impl Player {
@@ -64,11 +70,66 @@ impl Player {
             pos: Vec2::new(screen_width() / 2.0, screen_height() / 2.0),
             radius: PLAYER_RADIUS,
             color: PLAYER_COLOR,
+            health: 100.0,
+            mana: 100.0,
         }
     }
 
     fn draw(&self) {
         draw_circle(self.pos.x, self.pos.y, self.radius, self.color);
+    }
+}
+
+struct Bar {
+    x: f32,
+    y: f32,
+    w: f32,
+    h: f32,
+    value: f32,
+    max: f32,
+    color: Color,
+    outline: bool,
+}
+
+impl Bar {
+    fn new(
+        x: f32,
+        y: f32,
+        w: f32,
+        h: f32,
+        value: f32,
+        max: f32,
+        color: Color,
+        outline: bool,
+    ) -> Self {
+        Self {
+            x,
+            y,
+            w,
+            h,
+            value,
+            max,
+            color,
+            outline,
+        }
+    }
+
+    fn chase(&mut self, diff: f32, drop_speed: f32, dt: f32) {
+        self.value += diff.clamp(-drop_speed * dt, drop_speed * dt);
+    }
+
+    fn draw(&self) {
+        if self.outline {
+            draw_rectangle_lines(self.x, self.y, self.w, self.h, 2.0, WHITE);
+        } else {
+            draw_rectangle(
+                self.x,
+                self.y,
+                self.w * (self.value / self.max),
+                self.h,
+                self.color,
+            );
+        }
     }
 }
 
@@ -82,6 +143,24 @@ async fn main() {
     let mut player: Player = Player::new();
     let mut enemies: Vec<Enemy> = Vec::new();
     let mut spawn_timer: f32 = gen_range(0.5, 1.0);
+
+    let mut health_bar: Bar = Bar::new(
+        20.0,
+        20.0,
+        200.0,
+        20.0,
+        100.0,
+        PLAYER_MAX_HEALTH,
+        RED,
+        false,
+    );
+    let mut chasing_health_bar: Bar =
+        Bar::new(20.0, 20.0, 200.0, 20.0, 100.0, 100.0, ORANGE, false);
+    let health_outline: Bar = Bar::new(20.0, 20.0, 200.0, 20.0, 100.0, 100.0, WHITE, true);
+
+    let mut mana_bar: Bar = Bar::new(20.0, 50.0, 200.0, 20.0, 100.0, PLAYER_MAX_MANA, BLUE, false);
+    let mut chasing_mana_bar: Bar = Bar::new(20.0, 50.0, 200.0, 20.0, 100.0, 100.0, SKYBLUE, false);
+    let mana_outline: Bar = Bar::new(20.0, 50.0, 200.0, 20.0, 100.0, 100.0, WHITE, true);
 
     loop {
         clear_background(BLACK);
@@ -117,14 +196,37 @@ async fn main() {
 
         // DRAWING
 
-        draw_player(&player.pos);
+        player.draw();
         draw_grid(&grid);
         for enemy in enemies.iter_mut() {
             enemy.update(dt);
             enemy.draw();
             if enemy.overlaps_circle(player.pos, PLAYER_RADIUS) {
-                std::process::exit(0);
+                player.health -= 10.0;
+                health_bar.value -= 10.0;
+                enemy.health = 0;
             }
+        }
+
+        enemies.retain(|e| !e.is_dead());
+
+        // Health and Mana
+
+        let health_diff = player.health - chasing_health_bar.value;
+        chasing_health_bar.chase(health_diff, HEALTH_DROP_SPEED, dt);
+
+        let mana_diff = player.mana - chasing_mana_bar.value;
+        chasing_mana_bar.chase(mana_diff, MANA_DROP_SPEED, dt);
+
+        chasing_health_bar.draw();
+        health_bar.draw();
+        health_outline.draw();
+        chasing_mana_bar.draw();
+        mana_bar.draw();
+        mana_outline.draw();
+
+        if player.health <= 0.0 {
+            std::process::exit(0);
         }
 
         next_frame().await
@@ -157,10 +259,6 @@ fn draw_grid(grid: &Vec<Vec<Vec2>>) {
             draw_circle_lines(pos.x, pos.y, 10.0, 2.0, YELLOW);
         }
     }
-}
-
-fn draw_player(pos: &Vec2) {
-    draw_circle(pos.x, pos.y, PLAYER_RADIUS, BLUE);
 }
 
 fn random_edge_position() -> Vec2 {
