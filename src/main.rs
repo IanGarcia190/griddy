@@ -1,3 +1,4 @@
+use macroquad::input::KeyCode::Space;
 use macroquad::prelude::*;
 use macroquad::rand::gen_range;
 
@@ -133,6 +134,30 @@ impl Bar {
     }
 }
 
+struct Trace {
+    array: Vec<Vec2>,
+}
+
+impl Trace {
+    fn new() -> Self {
+        Self { array: Vec::new() }
+    }
+
+    fn append(&mut self, new_pos: Vec2) {
+        self.array.push(new_pos);
+    }
+
+    fn draw(&self) {
+        let mut i = 1;
+        while i < self.array.len() {
+            let vec1: Vec2 = self.array[i - 1];
+            let vec2: Vec2 = self.array[i];
+
+            draw_line(vec1.x, vec1.y, vec2.x, vec2.y, 2.0, BLUE);
+        }
+    }
+}
+
 #[macroquad::main("griddy")]
 async fn main() {
     let screen_center: Vec2 = Vec2::new(screen_width() / 2.0, screen_height() / 2.0);
@@ -143,6 +168,7 @@ async fn main() {
     let mut player: Player = Player::new();
     let mut enemies: Vec<Enemy> = Vec::new();
     let mut spawn_timer: f32 = gen_range(0.5, 1.0);
+    let mut trace = Trace::new();
 
     let mut health_bar: Bar = Bar::new(
         20.0,
@@ -182,8 +208,18 @@ async fn main() {
             player.index.1 -= 1;
         }
 
+        // if space bar is down, we're tracing.
+        // We only push a new pos to the trace if position changes, as in the current is not the
+        // same as the last.
+        // once key is released we are no longer tracing or DRAWING
+
         player.pos = grid[player.index.1 as usize][player.index.0 as usize];
 
+        if is_key_down(KeyCode::Space) {
+            if player.pos == trace.array[trace.array.len()] {
+                continue;
+            }
+        }
         // managing enemies
 
         spawn_timer -= dt;
